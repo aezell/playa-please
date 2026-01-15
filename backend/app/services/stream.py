@@ -20,6 +20,7 @@ class StreamService:
     """Service for managing audio stream URLs"""
 
     # yt-dlp options for extracting audio URLs
+    # Use android client to help bypass bot detection
     YDL_OPTS = {
         'format': 'bestaudio/best',
         'quiet': True,
@@ -27,7 +28,19 @@ class StreamService:
         'extract_flat': False,
         'skip_download': True,
         'noplaylist': True,
+        'extractor_args': {
+            'youtube': {
+                'player_client': ['android', 'web'],
+            }
+        },
+        'http_headers': {
+            'User-Agent': 'Mozilla/5.0 (Linux; Android 12; Pixel 6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
+        },
     }
+
+    # Rate limiting - track last request time
+    _last_request_time: Optional[datetime] = None
+    _min_request_interval = 2.0  # seconds between requests
 
     def __init__(self, db: Session):
         self.db = db
@@ -148,6 +161,18 @@ class StreamService:
 
         self.db.commit()
 
+    def _rate_limit(self) -> None:
+        """Apply rate limiting between requests to avoid bot detection."""
+        import time
+        now = datetime.utcnow()
+        if StreamService._last_request_time is not None:
+            elapsed = (now - StreamService._last_request_time).total_seconds()
+            if elapsed < StreamService._min_request_interval:
+                sleep_time = StreamService._min_request_interval - elapsed
+                logger.debug(f"Rate limiting: sleeping {sleep_time:.2f}s")
+                time.sleep(sleep_time)
+        StreamService._last_request_time = datetime.utcnow()
+
     def _extract_stream_url(self, video_id: str) -> Tuple[str, datetime]:
         """
         Extract audio stream URL using yt-dlp (synchronous).
@@ -161,6 +186,9 @@ class StreamService:
         Raises:
             ValueError: If extraction fails
         """
+        # Apply rate limiting
+        self._rate_limit()
+
         url = f"https://www.youtube.com/watch?v={video_id}"
 
         try:
