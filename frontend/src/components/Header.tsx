@@ -15,7 +15,7 @@ export function Header({ user, onLogout }: HeaderProps) {
           <div className="w-8 h-8 bg-primary-500 rounded-lg flex items-center justify-center">
             <Music className="w-4 h-4 text-white" />
           </div>
-          <h1 className="text-lg font-semibold text-white">Better Supermix</h1>
+          <h1 className="text-lg font-semibold text-white">Playa Please</h1>
         </div>
 
         {/* User Info */}

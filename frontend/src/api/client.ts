@@ -1,5 +1,5 @@
 /**
- * API Client for Better Supermix backend
+ * API Client for Playa Please backend
  */
 
 import type {
