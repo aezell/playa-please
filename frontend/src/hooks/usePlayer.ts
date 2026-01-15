@@ -142,15 +142,27 @@ export function usePlayer(): UsePlayerReturn {
     }
   }, [volume, clearProgressInterval, startProgressTracking]);
 
-  // Next song
-  const next = useCallback(async () => {
+  // Next song - with retry logic for unavailable songs
+  const next = useCallback(async (retryCount = 0) => {
+    const MAX_RETRIES = 10; // Don't loop forever
+
+    if (retryCount >= MAX_RETRIES) {
+      console.error('Max retries reached, stopping playback');
+      setState(prev => ({
+        ...prev,
+        currentSong: null,
+        isPlaying: false,
+        isLoading: false,
+      }));
+      return;
+    }
+
     try {
       // Call API to advance queue
       const newSong = await apiNextSong();
 
       if (newSong) {
-        // Use prefetched URL if available
-        const prefetchedUrl = nextStreamUrlRef.current;
+        // Clear any prefetched URL (might be stale/invalid)
         nextStreamUrlRef.current = null;
 
         // Update queue
@@ -159,8 +171,8 @@ export function usePlayer(): UsePlayerReturn {
           queue: prev.queue.slice(1),
         }));
 
-        // Load the new song
-        await loadSong(newSong, prefetchedUrl || undefined);
+        // Try to load the new song (don't use prefetched URL - fetch fresh)
+        await loadSong(newSong);
 
         // Prefetch the next one
         setState(prev => {
@@ -181,7 +193,9 @@ export function usePlayer(): UsePlayerReturn {
         }));
       }
     } catch (error) {
-      console.error('Failed to skip to next song:', error);
+      console.error(`Failed to play song (attempt ${retryCount + 1}):`, error);
+      // Automatically try the next song
+      setTimeout(() => next(retryCount + 1), 300);
     }
   }, [loadSong, prefetchNextSong]);
 
