@@ -259,6 +259,7 @@ export function useYouTubePlayer(): UseYouTubePlayerReturn {
             enablejsapi: 1,
             modestbranding: 1,
             rel: 0,
+            origin: window.location.origin,
           },
           events: {
             onReady: (event) => {
@@ -298,15 +299,20 @@ export function useYouTubePlayer(): UseYouTubePlayerReturn {
               }
             },
             onError: (event) => {
-              console.error('YouTube player error:', event.data);
               // Error codes: 2 = invalid video ID, 5 = HTML5 error, 100 = not found, 101/150 = not embeddable
+              const errorMessages: Record<number, string> = {
+                2: 'Invalid video ID',
+                5: 'HTML5 player error',
+                100: 'Video not found',
+                101: 'Video owner disabled embedding',
+                150: 'Video owner disabled embedding',
+              };
+              console.warn(`YouTube error ${event.data}: ${errorMessages[event.data] || 'Unknown error'}`);
               setState(prev => ({ ...prev, isLoading: false }));
 
-              // Auto-skip on error
-              if (event.data === 100 || event.data === 101 || event.data === 150) {
-                console.log('Video not available, skipping...');
-                setTimeout(() => nextFnRef.current(), 500);
-              }
+              // Auto-skip on any playback error
+              console.log('Skipping to next video...');
+              setTimeout(() => nextFnRef.current(), 300);
             },
           },
         });
