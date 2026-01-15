@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { ThumbsUp, ThumbsDown, Music } from 'lucide-react';
 import { likeSong, dislikeSong } from '../api/client';
 import type { Song } from '../api/types';
@@ -11,6 +11,11 @@ interface NowPlayingProps {
 export function NowPlaying({ song, isLoading }: NowPlayingProps) {
   const [feedback, setFeedback] = useState<'like' | 'dislike' | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Reset feedback when song changes
+  useEffect(() => {
+    setFeedback(null);
+  }, [song?.video_id]);
 
   const handleLike = async () => {
     if (!song || isSubmitting) return;
@@ -74,12 +79,18 @@ export function NowPlaying({ song, isLoading }: NowPlayingProps) {
   return (
     <div className="flex flex-col items-center">
       {/* Album Art */}
-      <div className="w-64 h-64 sm:w-72 sm:h-72 md:w-80 md:h-80 rounded-lg overflow-hidden shadow-2xl shadow-black/50">
-        <img
-          src={song.thumbnail_url}
-          alt={`${song.title} album art`}
-          className="w-full h-full object-cover"
-        />
+      <div className="w-64 h-64 sm:w-72 sm:h-72 md:w-80 md:h-80 rounded-lg overflow-hidden shadow-2xl shadow-black/50 bg-gray-800">
+        {song.thumbnail_url ? (
+          <img
+            src={song.thumbnail_url}
+            alt={`${song.title} album art`}
+            className="w-full h-full object-cover"
+          />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center">
+            <Music className="w-16 h-16 text-gray-600" />
+          </div>
+        )}
       </div>
 
       {/* Song Info */}

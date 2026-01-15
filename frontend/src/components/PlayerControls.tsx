@@ -6,6 +6,7 @@ interface PlayerControlsProps {
   duration: number;
   volume: number;
   isLoading?: boolean;
+  seekDisabled?: boolean;
   onPlay: () => void;
   onPause: () => void;
   onNext: () => void;
@@ -25,6 +26,7 @@ export function PlayerControls({
   duration,
   volume,
   isLoading,
+  seekDisabled,
   onPlay,
   onPause,
   onNext,
@@ -32,6 +34,7 @@ export function PlayerControls({
   onVolumeChange,
 }: PlayerControlsProps) {
   const handleProgressClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (seekDisabled) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const clickX = e.clientX - rect.left;
     const percentage = clickX / rect.width;
@@ -54,7 +57,7 @@ export function PlayerControls({
       {/* Progress Bar */}
       <div className="mb-4">
         <div
-          className="relative h-1 bg-gray-700 rounded-full cursor-pointer group"
+          className={`relative h-1 bg-gray-700 rounded-full group ${seekDisabled ? 'cursor-default' : 'cursor-pointer'}`}
           onClick={handleProgressClick}
         >
           {/* Progress fill */}
@@ -63,10 +66,12 @@ export function PlayerControls({
             style={{ width: `${progressPercentage}%` }}
           />
           {/* Hover handle */}
-          <div
-            className="absolute w-3 h-3 bg-white rounded-full -top-1 opacity-0 group-hover:opacity-100 transition-opacity shadow-md"
-            style={{ left: `calc(${progressPercentage}% - 6px)` }}
-          />
+          {!seekDisabled && (
+            <div
+              className="absolute w-3 h-3 bg-white rounded-full -top-1 opacity-0 group-hover:opacity-100 transition-opacity shadow-md"
+              style={{ left: `calc(${progressPercentage}% - 6px)` }}
+            />
+          )}
         </div>
 
         {/* Hidden range input for accessibility */}

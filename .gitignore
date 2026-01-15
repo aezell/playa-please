@@ -42,3 +42,4 @@ Thumbs.db
 # Frontend build (keep this, it's needed for serving)
 # frontend/dist/
 backend/cookies.txt
+backend/.browser-data/

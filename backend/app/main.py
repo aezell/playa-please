@@ -2,9 +2,11 @@
 Playa Please - Main FastAPI Application
 
 A personalized music player that integrates with YouTube Music.
+Uses a headless browser to play audio from YouTube Music.
 """
 import logging
 import os
+import subprocess
 from pathlib import Path
 from contextlib import asynccontextmanager
 
@@ -15,7 +17,9 @@ from fastapi.responses import FileResponse, JSONResponse
 
 from .config import get_settings
 from .database import init_db
-from .routers import auth_router, player_router, playlist_router
+from .routers import auth_router, player_router, playlist_router, audio_router
+from .services.browser_controller import init_browser_controller, shutdown_browser_controller
+from .services.audio_streamer import init_audio_streamer, shutdown_audio_streamer
 
 # Configure logging
 logging.basicConfig(
@@ -27,6 +31,28 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 
 
+async def setup_audio_environment():
+    """Set up Xvfb and PulseAudio for browser audio capture"""
+    script_path = Path(__file__).parent.parent / "scripts" / "setup-audio.sh"
+    if script_path.exists():
+        logger.info("Setting up audio environment...")
+        try:
+            result = subprocess.run(
+                [str(script_path)],
+                capture_output=True,
+                text=True,
+                timeout=30
+            )
+            if result.returncode == 0:
+                logger.info("Audio environment ready")
+            else:
+                logger.warning(f"Audio setup warning: {result.stderr}")
+        except Exception as e:
+            logger.error(f"Failed to set up audio environment: {e}")
+    else:
+        logger.warning(f"Audio setup script not found at {script_path}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
@@ -34,19 +60,43 @@ async def lifespan(app: FastAPI):
 
     Runs on startup:
     - Initialize database tables
+    - Set up audio environment (Xvfb, PulseAudio)
+    - Start browser controller
+    - Start audio streamer
 
     Runs on shutdown:
-    - Cleanup resources
+    - Stop audio streamer
+    - Stop browser controller
     """
     # Startup
     logger.info("Starting Playa Please API...")
     init_db()
     logger.info("Database initialized")
 
+    # Set up audio environment
+    await setup_audio_environment()
+
+    # Start audio services
+    try:
+        browser = await init_browser_controller()
+        if browser.is_authenticated:
+            logger.info("Browser authenticated - starting audio streamer")
+            await init_audio_streamer()
+        else:
+            logger.warning(
+                "Browser not authenticated - user needs to log in. "
+                "Audio streaming disabled until login."
+            )
+    except Exception as e:
+        logger.error(f"Failed to initialize audio services: {e}")
+
     yield
 
     # Shutdown
     logger.info("Shutting down Playa Please API...")
+    await shutdown_audio_streamer()
+    await shutdown_browser_controller()
+    logger.info("Audio services stopped")
 
 
 # Create FastAPI application
@@ -71,6 +121,7 @@ app.add_middleware(
 app.include_router(auth_router)
 app.include_router(player_router)
 app.include_router(playlist_router)
+app.include_router(audio_router)
 
 
 @app.get("/api/health")

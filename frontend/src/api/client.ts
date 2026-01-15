@@ -127,4 +127,63 @@ export async function getLibraryStats(): Promise<LibraryStats> {
   return handleResponse<LibraryStats>(response);
 }
 
+// === Audio Streaming Endpoints ===
+
+export interface AudioStatus {
+  browser_running: boolean;
+  browser_authenticated: boolean;
+  stream_running: boolean;
+  active_listeners: number;
+}
+
+export interface NowPlayingResponse {
+  video_id: string | null;
+  title: string | null;
+  artist: string | null;
+  thumbnail: string | null;
+  duration_seconds: number;
+  position_seconds: number;
+  state: 'idle' | 'playing' | 'paused' | 'loading' | 'error';
+}
+
+export interface ControlResponse {
+  success: boolean;
+  message: string;
+  now_playing: NowPlayingResponse | null;
+}
+
+export async function getAudioStatus(): Promise<AudioStatus> {
+  const response = await fetch('/api/audio/status', {
+    credentials: 'include',
+  });
+  return handleResponse<AudioStatus>(response);
+}
+
+export async function getNowPlaying(): Promise<NowPlayingResponse> {
+  const response = await fetch('/api/audio/now-playing', {
+    credentials: 'include',
+  });
+  return handleResponse<NowPlayingResponse>(response);
+}
+
+export async function controlAudio(action: 'play' | 'pause' | 'skip'): Promise<ControlResponse> {
+  const response = await fetch('/api/audio/control', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    credentials: 'include',
+    body: JSON.stringify({ action }),
+  });
+  return handleResponse<ControlResponse>(response);
+}
+
+export async function playSpecificSong(videoId: string): Promise<ControlResponse> {
+  const response = await fetch(`/api/audio/play/${encodeURIComponent(videoId)}`, {
+    method: 'POST',
+    credentials: 'include',
+  });
+  return handleResponse<ControlResponse>(response);
+}
+
 export { ApiError };

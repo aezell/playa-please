@@ -498,6 +498,41 @@ class PlaylistAlgorithm:
         # Return in queue order
         return [song_map[entry.video_id] for entry in queue_entries if entry.video_id in song_map]
 
+    def mark_song_played(self, video_id: str) -> bool:
+        """
+        Mark a song as played in the queue.
+
+        Args:
+            video_id: The video ID to mark as played
+
+        Returns:
+            True if the song was found and marked
+        """
+        queue_entry = (
+            self.db.query(PlaylistQueue)
+            .filter(
+                PlaylistQueue.user_id == self.user_id,
+                PlaylistQueue.video_id == video_id,
+                PlaylistQueue.played == False
+            )
+            .first()
+        )
+
+        if queue_entry:
+            queue_entry.played = True
+            # Also update UserSong last_played
+            from ..models import UserSong
+            user_song = self.db.query(UserSong).filter(
+                UserSong.user_id == self.user_id,
+                UserSong.video_id == video_id
+            ).first()
+            if user_song:
+                from datetime import datetime
+                user_song.last_played = datetime.utcnow()
+                user_song.play_count = (user_song.play_count or 0) + 1
+            return True
+        return False
+
     async def update_song_score(self, video_id: str, event: str) -> float:
         """
         Update song score based on user interaction.
