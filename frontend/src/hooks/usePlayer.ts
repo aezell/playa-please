@@ -35,6 +35,7 @@ export function usePlayer(): UsePlayerReturn {
   const howlRef = useRef<Howl | null>(null);
   const progressIntervalRef = useRef<number | null>(null);
   const nextStreamUrlRef = useRef<string | null>(null);
+  const nextFnRef = useRef<(retryCount?: number) => Promise<void>>(() => Promise.resolve());
 
   // Clear progress interval
   const clearProgressInterval = useCallback(() => {
@@ -194,10 +195,15 @@ export function usePlayer(): UsePlayerReturn {
       }
     } catch (error) {
       console.error(`Failed to play song (attempt ${retryCount + 1}):`, error);
-      // Automatically try the next song
-      setTimeout(() => next(retryCount + 1), 300);
+      // Automatically try the next song using ref to avoid stale closure
+      setTimeout(() => nextFnRef.current(retryCount + 1), 300);
     }
   }, [loadSong, prefetchNextSong]);
+
+  // Keep ref updated for recursive calls
+  useEffect(() => {
+    nextFnRef.current = next;
+  }, [next]);
 
   // Initial queue fetch
   useEffect(() => {

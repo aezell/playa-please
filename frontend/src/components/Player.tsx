@@ -1,4 +1,4 @@
-import { usePlayer } from '../hooks/usePlayer';
+import { useYouTubePlayer } from '../hooks/useYouTubePlayer';
 import { Header } from './Header';
 import { NowPlaying } from './NowPlaying';
 import { PlayerControls } from './PlayerControls';
@@ -25,7 +25,8 @@ export function Player({ user, onLogout }: PlayerProps) {
     seek,
     volume,
     setVolume,
-  } = usePlayer();
+    playerContainerId,
+  } = useYouTubePlayer();
 
   return (
     <div className="min-h-screen bg-gray-900 flex flex-col">
@@ -60,6 +61,9 @@ export function Player({ user, onLogout }: PlayerProps) {
           <SyncStatus />
         </aside>
       </main>
+
+      {/* Hidden YouTube Player - audio only */}
+      <div id={playerContainerId} className="hidden" />
     </div>
   );
 }
