@@ -37,12 +37,14 @@ class StreamService:
     def _get_ydl_opts() -> dict:
         """Get yt-dlp options, including cookies if available."""
         opts = {
-            'format': 'bestaudio/best',
+            # Don't specify format - we'll select from available formats manually
             'quiet': True,
             'no_warnings': True,
             'extract_flat': False,
             'skip_download': True,
             'noplaylist': True,
+            # Enable remote JS solver for YouTube signature challenges
+            'remote_components': ['ejs:github'],
         }
 
         # Use cookies if file exists
@@ -280,18 +282,47 @@ class StreamService:
 
                 # Get the best audio format URL
                 formats = info.get('formats', [])
-                audio_formats = [f for f in formats if f.get('acodec') != 'none' and f.get('vcodec') == 'none']
+
+                # Try audio-only formats first (no video codec)
+                audio_formats = [f for f in formats if f.get('acodec') != 'none' and f.get('vcodec') == 'none' and f.get('url')]
 
                 if audio_formats:
-                    # Sort by quality (abr = audio bitrate)
-                    audio_formats.sort(key=lambda x: x.get('abr', 0) or 0, reverse=True)
+                    # Prefer browser-compatible formats: m4a (aac), webm (opus), mp3
+                    # Sort by: 1) browser compatibility, 2) bitrate
+                    def format_score(f):
+                        ext = f.get('ext', '')
+                        acodec = f.get('acodec', '')
+                        abr = f.get('abr', 0) or 0
+
+                        # Prefer m4a/mp4 (aac) and webm (opus) - widely supported
+                        if ext in ('m4a', 'mp4') or 'aac' in acodec:
+                            compat = 3
+                        elif ext == 'webm' or 'opus' in acodec:
+                            compat = 2
+                        elif ext == 'mp3':
+                            compat = 3
+                        else:
+                            compat = 1
+
+                        return (compat, abr)
+
+                    audio_formats.sort(key=format_score, reverse=True)
                     best_audio = audio_formats[0]
                 else:
-                    # Fallback to any format with audio
-                    audio_formats = [f for f in formats if f.get('acodec') != 'none']
-                    if not audio_formats:
+                    # Fallback to any format with audio and a URL
+                    audio_formats = [f for f in formats if f.get('acodec') != 'none' and f.get('url')]
+                    if audio_formats:
+                        # Prefer formats without video to save bandwidth
+                        audio_formats.sort(key=lambda x: (x.get('vcodec') == 'none', x.get('abr', 0) or 0), reverse=True)
+                        best_audio = audio_formats[0]
+                    else:
+                        # Last resort: use the direct URL if available
+                        direct_url = info.get('url')
+                        if direct_url:
+                            logger.info(f"Using direct URL for {video_id}")
+                            expires_at = datetime.utcnow() + timedelta(hours=settings.stream_cache_hours)
+                            return (direct_url, expires_at)
                         raise ValueError(f"No audio formats found for video {video_id}")
-                    best_audio = audio_formats[0]
 
                 stream_url = best_audio.get('url')
                 if not stream_url:
