@@ -108,6 +108,33 @@ Configurable in `.env`:
 4. Music starts playing automatically from your generated playlist
 5. Use like/dislike buttons to train the algorithm
 
+## Troubleshooting
+
+### Bot Detection / Videos Won't Play
+
+YouTube aggressively blocks cloud IPs. If you see "Bot detection triggered" errors, you need to provide your browser cookies:
+
+1. Install a browser extension to export cookies:
+   - Chrome: [Get cookies.txt LOCALLY](https://chromewebstore.google.com/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc)
+   - Firefox: [cookies.txt](https://addons.mozilla.org/en-US/firefox/addon/cookies-txt/)
+
+2. Go to [youtube.com](https://youtube.com) and make sure you're logged in
+
+3. Export cookies using the extension (export for youtube.com domain)
+
+4. Place the `cookies.txt` file in the `backend/` directory:
+   ```
+   playa-please/
+   └── backend/
+       └── cookies.txt   <-- put it here
+   ```
+
+5. Restart the service
+
+The cookies authenticate your requests to YouTube, making them look like they're coming from your browser.
+
+**Note:** Cookie files expire periodically. If playback stops working, export fresh cookies.
+
 ## License
 
 MIT

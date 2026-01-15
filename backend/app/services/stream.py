@@ -1,10 +1,13 @@
 """
-Stream service - Get audio stream URLs using yt-dlp
+Stream service - Get audio stream URLs using yt-dlp or Piped API fallback
 """
 import asyncio
 import logging
+import httpx
+import os
 from datetime import datetime, timedelta
-from typing import Optional, Tuple
+from pathlib import Path
+from typing import Optional, Tuple, List
 
 import yt_dlp
 from sqlalchemy.orm import Session
@@ -15,28 +18,46 @@ from ..models import StreamCache, UnavailableVideo
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
+# Cookie file path - user can place cookies.txt here
+COOKIE_FILE = Path(__file__).parent.parent.parent / "cookies.txt"
+
+# Piped instances to try as fallback (public instances)
+PIPED_INSTANCES = [
+    "https://pipedapi.kavin.rocks",
+    "https://pipedapi.adminforge.de",
+    "https://api.piped.yt",
+    "https://pipedapi.in.projectsegfau.lt",
+]
+
 
 class StreamService:
     """Service for managing audio stream URLs"""
 
-    # yt-dlp options for extracting audio URLs
-    # Use android client to help bypass bot detection
-    YDL_OPTS = {
-        'format': 'bestaudio/best',
-        'quiet': True,
-        'no_warnings': True,
-        'extract_flat': False,
-        'skip_download': True,
-        'noplaylist': True,
-        'extractor_args': {
-            'youtube': {
-                'player_client': ['android', 'web'],
+    @staticmethod
+    def _get_ydl_opts() -> dict:
+        """Get yt-dlp options, including cookies if available."""
+        opts = {
+            'format': 'bestaudio/best',
+            'quiet': True,
+            'no_warnings': True,
+            'extract_flat': False,
+            'skip_download': True,
+            'noplaylist': True,
+        }
+
+        # Use cookies if file exists
+        if COOKIE_FILE.exists():
+            opts['cookiefile'] = str(COOKIE_FILE)
+            logger.info(f"Using cookies from {COOKIE_FILE}")
+        else:
+            # Without cookies, try mediaconnect client as fallback
+            opts['extractor_args'] = {
+                'youtube': {
+                    'player_client': ['mediaconnect', 'android', 'web'],
+                }
             }
-        },
-        'http_headers': {
-            'User-Agent': 'Mozilla/5.0 (Linux; Android 12; Pixel 6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
-        },
-    }
+
+        return opts
 
     # Rate limiting - track last request time
     _last_request_time: Optional[datetime] = None
@@ -173,9 +194,61 @@ class StreamService:
                 time.sleep(sleep_time)
         StreamService._last_request_time = datetime.utcnow()
 
+    def _try_piped_api(self, video_id: str) -> Optional[Tuple[str, datetime]]:
+        """
+        Try to get stream URL from Piped API instances.
+
+        Piped is a privacy-friendly YouTube frontend that can provide
+        stream URLs without triggering bot detection.
+        """
+        for instance in PIPED_INSTANCES:
+            try:
+                url = f"{instance}/streams/{video_id}"
+                logger.debug(f"Trying Piped instance: {instance}")
+
+                with httpx.Client(timeout=10.0) as client:
+                    response = client.get(url)
+
+                    if response.status_code == 200:
+                        data = response.json()
+
+                        # Get audio streams
+                        audio_streams = data.get('audioStreams', [])
+                        if audio_streams:
+                            # Sort by bitrate, get highest quality
+                            audio_streams.sort(key=lambda x: x.get('bitrate', 0), reverse=True)
+                            best_audio = audio_streams[0]
+                            stream_url = best_audio.get('url')
+
+                            if stream_url:
+                                logger.info(f"Got stream URL from Piped ({instance}) for {video_id}")
+                                # Piped URLs typically last a few hours
+                                expires_at = datetime.utcnow() + timedelta(hours=2)
+                                return (stream_url, expires_at)
+
+                        # Fallback to adaptive formats if no audio streams
+                        hls = data.get('hls')
+                        if hls:
+                            logger.info(f"Got HLS stream from Piped ({instance}) for {video_id}")
+                            expires_at = datetime.utcnow() + timedelta(hours=2)
+                            return (hls, expires_at)
+
+                    elif response.status_code == 500:
+                        # Video might be unavailable
+                        error_msg = response.json().get('message', '')
+                        if 'unavailable' in error_msg.lower():
+                            logger.warning(f"Video {video_id} unavailable on Piped")
+                            return None
+
+            except Exception as e:
+                logger.warning(f"Piped instance {instance} failed for {video_id}: {e}")
+                continue
+
+        return None
+
     def _extract_stream_url(self, video_id: str) -> Tuple[str, datetime]:
         """
-        Extract audio stream URL using yt-dlp (synchronous).
+        Extract audio stream URL, trying Piped API first then yt-dlp as fallback.
 
         Args:
             video_id: YouTube video ID
@@ -186,13 +259,20 @@ class StreamService:
         Raises:
             ValueError: If extraction fails
         """
-        # Apply rate limiting
+        # Try Piped API first (avoids bot detection)
+        piped_result = self._try_piped_api(video_id)
+        if piped_result:
+            return piped_result
+
+        logger.debug(f"Piped failed, falling back to yt-dlp for {video_id}")
+
+        # Apply rate limiting for yt-dlp
         self._rate_limit()
 
         url = f"https://www.youtube.com/watch?v={video_id}"
 
         try:
-            with yt_dlp.YoutubeDL(self.YDL_OPTS) as ydl:
+            with yt_dlp.YoutubeDL(self._get_ydl_opts()) as ydl:
                 info = ydl.extract_info(url, download=False)
 
                 if not info:
